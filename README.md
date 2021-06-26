@@ -1,6 +1,6 @@
 # Buildkite Terraform Plugin
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/echoboomer/terraform-buildkite-plugin) ![GitHub Release Date](https://img.shields.io/github/release-date/echoboomer/terraform-buildkite-plugin) ![GitHub contributors](https://img.shields.io/github/contributors/echoboomer/terraform-buildkite-plugin) ![GitHub issues](https://img.shields.io/github/issues/echoboomer/terraform-buildkite-plugin)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/codeninja55/terraform-buildkite-plugin) ![GitHub Release Date](https://img.shields.io/github/release-date/codeninja55/terraform-buildkite-plugin) ![GitHub contributors](https://img.shields.io/github/contributors/codeninja55/terraform-buildkite-plugin) ![GitHub issues](https://img.shields.io/github/issues/codeninja55/terraform-buildkite-plugin)
 
 Runs Terraform as a Buildkite pipeline step.
 
