@@ -148,7 +148,7 @@ function terraform_run() {
     echo "APPLY_ONLY: ${APPLY_ONLY}"
     echo "DIRECTORY: ${TERRAFORM_DIR}"
     echo "VARS_DIR: ${VARS_DIR}"
-    echo "VARS_FILE_NAME: ${VARS_DIR}"
+    echo "VARS_FILE_NAME: ${VARS_FILE_NAME}"
     echo "BUILDKITE_BRANCH: ${BUILDKITE_BRANCH}"
     echo "IMAGE_NAME: ${IMAGE_NAME}"
     # shellcheck disable=SC2145
