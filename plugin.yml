@@ -17,7 +17,7 @@ configuration:
     debug:
       type: boolean
     directory:
-        type: string
+      type: string
     env:
       type: [string, array]
     image:

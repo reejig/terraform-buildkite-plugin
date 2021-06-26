@@ -210,7 +210,20 @@ function terraform_run() {
         terraform_bin plan -input=false -out tfplan -var-file="${WORKSPACE}-terraform.tfvars"
       fi
     else
-      terraform_bin plan -input=false -out tfplan
+      if [[ -n "${VARS_FILE_NAME}" ]]; then
+        if [[ -n "${VARS_DIR}" ]]; then
+          # Check to ensure the final slash is present or not
+          local CLEAN_VARS_DIR=${VARS_DIR:-}
+          if [[ "${VARS_DIR: -1}" != "/" ]]; then
+            CLEAN_VARS_DIR="${VARS_DIR}/"
+          fi
+          terraform_bin plan -input=false -out tfplan -var-file="${CLEAN_VARS_DIR}${VARS_FILE_NAME}"
+        else
+          terraform_bin plan -input=false -out tfplan -var-file="${VARS_FILE_NAME}"
+        fi
+      else
+        terraform_bin plan -input=false -out tfplan
+      fi
     fi
 
     # Capture plan output for setting variables and passing as artifacts.
