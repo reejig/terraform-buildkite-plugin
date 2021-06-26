@@ -2,30 +2,45 @@
 
 set -euo pipefail
 
-#########
-# SETUP #
-#########
+##############################
+## SETUP                    ##
+##############################
 
-# Check for presence of required directories.
+# These folders are required if no config_dir is passed
 required_folders=(
   terraform
 )
 
-for dir in "${required_folders[@]}"; do
-  if [[ -d $dir ]]; then
-    echo "${dir} directory located."
+# Check we have a directory to perform on
+BUILDKITE_PLUGIN_TERRAFORM_DIRECTORY=${BUILDKITE_PLUGIN_TERRAFORM_DIRECTORY:-terraform}
+FOUND_FOLDER=0
+if [[ -n "${BUILDKITE_PLUGIN_TERRAFORM_DIRECTORY}" ]]; then
+  if [[ -d "${BUILDKITE_PLUGIN_TERRAFORM_DIRECTORY}" ]]; then
+    echo "${BUILDKITE_PLUGIN_TERRAFORM_DIRECTORY} directory located."
+    FOUND_FOLDER=1
   else
     echo "${dir} directory not found. Please make sure it is located in the project root. We looked in $(pwd)."
-    exit 1
   fi
-done
+else
+  for dir in "${required_folders[@]}"; do
+    if [[ -d $dir ]]; then
+      echo "${dir} directory located."
+      FOUND_FOLDER=1
+    fi
+
+    if [[ ${FOUND_FOLDER} -eq 0 ]]; then
+      echo "${dir} directory not found. Please make sure it is located in the project root. We looked in $(pwd)."
+      exit 1
+    fi
+  done
+fi
 
 # We do this to cover cases where modules are stored in GitHub.
 # Without this, the container hangs forever waiting for confirmation.
 KNOWN_HOSTS_FILE=$(pwd)/known_hosts
 
-if [[ ! -f "$KNOWN_HOSTS_FILE" ]]; then
-  ssh-keyscan github.com >> $KNOWN_HOSTS_FILE
+if [[ ! -f "${KNOWN_HOSTS_FILE}" ]]; then
+  ssh-keyscan github.com >> "${KNOWN_HOSTS_FILE}"
 fi
 
 # Reads either a value or a list from plugin config
@@ -51,40 +66,45 @@ function prefix_read_list() {
   fi
 }
 
-function terraform-bin() {
+function terraform_bin() {
   local DOCKER_IMAGE="${IMAGE_NAME}:${VERSION}"
 
   docker_args=()
 
+  # Initial args passed to Docker
   docker_args+=(
     "--rm"
     "-it"
-    "-e" "SSH_AUTH_SOCK"
-    "-v" "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK"
-    "-v" "$PWD:/svc"
-    "-v" "$KNOWN_HOSTS_FILE:/root/.ssh/known_hosts"
+    "--env" "SSH_AUTH_SOCK"
+    "--volume" "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK"
+    "--volume" "$PWD:/svc"
+    "--volume" "$KNOWN_HOSTS_FILE:/root/.ssh/known_hosts"
   )
 
+  # Read extra Terraform envs args passed from the plugin config
   extra_envs=()
   while read -r line; do
     [[ -n "$line" ]] && extra_envs+=("$line")
   done <<< "$(plugin_read_list ENV)"
 
+  # Add the Terraform envs to the Docker args
   for e in ${extra_envs[@]-}; do
     docker_args+=("--env" "$e")
   done
 
+  # Read any extra volumes to attach to the Docker container from the plugin config
   extra_volumes=()
   while read -r line; do
     [[ -n "$line" ]] && extra_volumes+=("$line")
   done <<< "$(plugin_read_list VOLUMES)"
 
+  # Add the Volume args to the Docker args
   for v in ${extra_volumes[@]-}; do
-    docker_args+=("-v" "$v")
+    docker_args+=("--volume" "$v")
   done
 
   docker_args+=(
-    "-w" "/svc"
+    "--workdir" "/svc"
     "$DOCKER_IMAGE"
     "${@}"
   )
@@ -97,17 +117,20 @@ function terraform-bin() {
   docker run $(printf "%q " "${docker_args[@]}")
 }
 
-function terraform-run() {
+function terraform_run() {
   local APPLY=${BUILDKITE_PLUGIN_TERRAFORM_APPLY:-false}
   local APPLY_MASTER=${BUILDKITE_PLUGIN_TERRAFORM_APPLY_MASTER:-false}
   local APPLY_ONLY=${BUILDKITE_PLUGIN_TERRAFORM_APPLY_ONLY:-false}
+  local TERRAFORM_DIR=${BUILDKITE_PLUGIN_TERRAFORM_DIRECTORY:-terraform}
   local BUILDKITE_BRANCH=${BUILDKITE_BRANCH:-}
   local DEBUG=${BUILDKITE_PLUGIN_TERRAFORM_DEBUG:-false}
   local IMAGE_NAME=${BUILDKITE_PLUGIN_TERRAFORM_IMAGE:-"hashicorp/terraform"}
   local NO_VALIDATE=${BUILDKITE_PLUGIN_TERRAFORM_NO_VALIDATE:-false}
   local SKIP_APPLY_NO_DIFF=${BUILDKITE_PLUGIN_TERRAFORM_SKIP_APPLY_NO_DIFF:-false}
   local USE_WORKSPACES=${BUILDKITE_PLUGIN_TERRAFORM_USE_WORKSPACES:-false}
-  local VERSION=${BUILDKITE_PLUGIN_TERRAFORM_VERSION:-0.13.0}
+  local VARS_DIR=${BUILDKITE_PLUGIN_TERRAFORM_VARS_DIR:-}
+  local VARS_FILE_NAME=${BUILDKITE_PLUGIN_TERRAFORM_VARS_FILE_NAME:-}
+  local VERSION=${BUILDKITE_PLUGIN_TERRAFORM_VERSION:-1.0.0}
   local WORKSPACE=${BUILDKITE_PLUGIN_TERRAFORM_WORKSPACE:-default}
   local AUTO_CREATE_WORKSPACE=${BUILDKITE_PLUGIN_TERRAFORM_AUTO_CREATE_WORKSPACE:-true}
   local WORKSPACE_METADATA_KEY=${BUILDKITE_PLUGIN_TERRAFORM_WORKSPACE_METADATA_KEY:-}
@@ -123,8 +146,12 @@ function terraform-run() {
     echo "APPLY: ${APPLY}"
     echo "APPLY_MASTER: ${APPLY_MASTER}"
     echo "APPLY_ONLY: ${APPLY_ONLY}"
+    echo "DIRECTORY: ${TERRAFORM_DIR}"
+    echo "VARS_DIR: ${VARS_DIR}"
+    echo "VARS_FILE_NAME: ${VARS_DIR}"
     echo "BUILDKITE_BRANCH: ${BUILDKITE_BRANCH}"
     echo "IMAGE_NAME: ${IMAGE_NAME}"
+    # shellcheck disable=SC2145
     echo "INIT_ARGS: ${args[@]}"
     echo "NO_VALIDATE: ${NO_VALIDATE}"
     echo "SKIP_APPLY_NO_DIFF: ${SKIP_APPLY_NO_DIFF}"
@@ -135,45 +162,60 @@ function terraform-run() {
     echo "WORKSPACE_METADATA_KEY ${WORKSPACE_METADATA_KEY}"
   fi
 
-  cd terraform
+  cd "${TERRAFORM_DIR}"
 
-  echo "+++ :terraform: :buildkite: :hammer_and_wrench: Setting up Terraform environment..."
+  echo "+++ :terraform: :buildkite: :hammer_and_wrench: Setting up Terraform environment ..."
   if [[ "${DEBUG}" == true ]]; then
+    # shellcheck disable=SC2145
     echo "Running init command string: terraform init ${args[@]}"
   fi
 
-  terraform-bin init "${args[@]}"
+  terraform_bin init "${args[@]}"
   echo ""
 
   if [[ "${USE_WORKSPACES}" == true ]]; then
     if [[ -n ${WORKSPACE_METADATA_KEY} ]]; then
       WORKSPACE=$(buildkite-agent meta-data get "${WORKSPACE_METADATA_KEY}")
-      echo "Overrode WORKSPACE with metadata key: ${WORKSPACE_METADATA_KEY}. Set WORKSPACE=${WORKSPACE}"
+      echo "Overriding WORKSPACE with metadata key: ${WORKSPACE_METADATA_KEY}. Set WORKSPACE=${WORKSPACE}"
     fi
     if [[ "${AUTO_CREATE_WORKSPACE}" == true ]]; then
-      terraform-bin workspace select ${WORKSPACE} || terraform-bin workspace new ${WORKSPACE}
+      terraform_bin workspace select "${WORKSPACE}" || terraform_bin workspace new "${WORKSPACE}"
     else
-      terraform-bin workspace select ${WORKSPACE}
+      terraform_bin workspace select "${WORKSPACE}"
     fi
     echo ""
   fi
 
   if [[ "${NO_VALIDATE}" == false ]]; then
-    terraform-bin validate
+    terraform_bin validate
   fi
 
   if [[ "${APPLY_ONLY}" == false ]]; then
     echo "+++ :terraform: :buildkite: :hourglass: Running Terraform plan..."
 
     if [[ "${USE_WORKSPACES}" == true ]]; then
-      terraform-bin plan -input=false -out tfplan -var-file="${WORKSPACE}-terraform.tfvars"
+      if [[ -n "${VARS_DIR}" ]]; then
+        # Check to ensure the final slash is present or not
+        local CLEAN_VARS_DIR=${VARS_DIR}
+        if [[ "${VARS_DIR: -1}" != "/" ]]; then
+          CLEAN_VARS_DIR="${VARS_DIR}/"
+        fi
+
+        if [[ -n "${VARS_FILE_NAME}" ]]; then
+          terraform_bin plan -input=false -out tfplan -var-file="${CLEAN_VARS_DIR}${VARS_FILE_NAME}"
+        else
+          terraform_bin plan -input=false -out tfplan -var-file="${CLEAN_VARS_DIR}${WORKSPACE}-terraform.tfvars"
+        fi
+      else
+        terraform_bin plan -input=false -out tfplan -var-file="${WORKSPACE}-terraform.tfvars"
+      fi
     else
-      terraform-bin plan -input=false -out tfplan
+      terraform_bin plan -input=false -out tfplan
     fi
 
     # Capture plan output for setting variables and passing as artifacts.
-    terraform-bin show tfplan -no-color > tfplan.txt
-    terraform-bin show -json tfplan > tfplan.json
+    terraform_bin show tfplan -no-color > tfplan.txt
+    terraform_bin show -json tfplan > tfplan.json
 
     if grep -iFq "Plan: 0 to add, 0 to change, 0 to destroy." tfplan.txt; then
       echo ""
@@ -198,9 +240,9 @@ function terraform-run() {
       echo "--- :terraform: :buildkite: :zzz: Skipping apply step."
     else
       echo "+++ :terraform: :buildkite: :hourglass: Running Terraform apply based on calculated plan..."
-      terraform-bin apply -input=false tfplan
+      terraform_bin apply -input=false tfplan
     fi
   fi
 }
 
-terraform-run
+terraform_run

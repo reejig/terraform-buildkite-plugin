@@ -1,8 +1,9 @@
 name: Terraform
 description: Runs Terraform in your pipeline.
-author: https://github.com/echoboomer
+author: https://github.com/codeninja55
 requirements:
   - docker
+version: 1.0.0
 configuration:
   properties:
     apply:
@@ -11,8 +12,12 @@ configuration:
       type: boolean
     apply_master:
       type: boolean
+    auto_create_workspace:
+      type: boolean
     debug:
       type: boolean
+    directory:
+        type: string
     env:
       type: [string, array]
     image:
@@ -27,8 +32,10 @@ configuration:
       type: boolean
     use_workspaces:
       type: boolean
-    auto_create_workspace:
-      type: boolean
+    vars_dir:
+      type: string
+    vars_file_name:
+      type: string
     version:
       type: string
     volumes:
