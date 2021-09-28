@@ -207,7 +207,7 @@ function terraform_run() {
           terraform_bin plan -input=false -out tfplan -var-file="${CLEAN_VARS_DIR}${WORKSPACE}-terraform.tfvars"
         fi
       else
-        terraform_bin plan -input=false -out tfplan -var-file="${WORKSPACE}-terraform.tfvars"
+        terraform_bin plan -input=false -out tfplan
       fi
     else
       if [[ -n "${VARS_FILE_NAME}" ]]; then
